@@ -1,5 +1,6 @@
 import { Page } from "@playwright/test";
 import { env } from "./baseTest";
+import { logger } from "../reporting/logger";
 
 export class BasePage {
   protected page: Page;
@@ -8,7 +9,12 @@ export class BasePage {
     this.page = page;
   }
 
-  async goto(pathname: string) {
-    await this.page.goto(`${env.BASE_URL}${pathname}`);
+  protected async navigate(path: string) {
+    const url = path.startsWith("http")
+      ? path
+      : `${env.BASE_URL}${path}`;
+  
+      logger.info(`Navigating to: ${url}`)
+    await this.page.goto(url);
   }
 }

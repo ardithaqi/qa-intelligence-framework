@@ -3,10 +3,25 @@ import { env } from "./src/config/env";
 
 export default defineConfig({
   testDir: "./tests",
+
+  projects: [
+    {
+      name: "smoke",
+      testMatch: /tests\/smoke\/.*\.spec\.ts/,
+    },
+    {
+      name: "regression",
+      testMatch: /tests\/regression\/.*\.spec\.ts/,
+    },
+    {
+      name: "examples",
+      testMatch: /tests\/examples\/.*\.spec\.ts/,
+    },
+  ],
+
   fullyParallel: true,
   workers: env.PW_WORKERS,
   retries: env.PW_RETRIES,
-  timeout: 30_000,
 
   use: {
     baseURL: env.BASE_URL,
@@ -15,8 +30,6 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-
-  outputDir: "test-results",
 
   reporter: [
     ["list"],

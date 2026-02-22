@@ -2,7 +2,7 @@ import { test } from "../../../src/core/baseTest";
 import { step } from "../../../src/core/steps";
 import LoginPage from "../../../src/examples/saucedemo/pages/loginPage";
 
-test("smoke: user can login", async ({ page, logStep }) => {
+test("smoke @smoke user can login", async ({ page, logStep }) => {
   const login = new LoginPage(page);
 
   await step("Open login page", async () => {

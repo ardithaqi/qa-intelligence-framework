@@ -7,7 +7,7 @@ export default class LoginPage extends BasePage {
   private loginBtn = this.page.locator('[data-test="login-button"]');
 
   async open() {
-    await this.goto("/");
+    await this.navigate("/");
   }
 
   async login(user: string, pass: string) {
