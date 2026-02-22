@@ -19,3 +19,10 @@ jobs:
 
       - name: Run tests inside Docker
         run: docker run --rm qa-framework
+      
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
