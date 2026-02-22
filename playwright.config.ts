@@ -18,6 +18,11 @@ export default defineConfig({
       testMatch: /tests\/examples\/.*\.spec\.ts/,
     },
   ],
+  
+  timeout: 30_000, // max time per test
+  expect: {
+    timeout: 5_000, // max time per assertion
+  },
 
   fullyParallel: true,
   workers: env.PW_WORKERS,

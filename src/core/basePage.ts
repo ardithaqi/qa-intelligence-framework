@@ -15,6 +15,7 @@ export class BasePage {
       : `${env.BASE_URL}${path}`;
   
       logger.info(`Navigating to: ${url}`)
-    await this.page.goto(url);
+    await this.page.goto(url, { waitUntil: "networkidle" });
+    
   }
 }
