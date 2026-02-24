@@ -10,7 +10,8 @@
     "test:all": "playwright test",
     "report": "playwright show-report",
     "docker:build": "docker build -t qa-framework",
-    "docker:test": "docker run --rm qa-framework"
+    "docker:test": "docker run --rm qa-framework",
+    "ai:analyze": "ts-node src/ai/runAnalyzer.ts"
   },
   "keywords": [],
   "author": "",
@@ -18,10 +19,12 @@
   "type": "commonjs",
   "devDependencies": {
     "@playwright/test": "^1.58.2",
-    "@types/node": "^22.10.2"
+    "@types/node": "^22.10.2",
+    "ts-node": "^10.9.2"
   },
   "dependencies": {
     "dotenv": "^17.3.1",
+    "openai": "^6.25.0",
     "zod": "^4.3.6"
   },
   "engines": {
