@@ -21,12 +21,10 @@ export default async function globalTeardown() {
 
     if (!analysis) return;
 
-    // Print to terminal
     console.log("=== AI Analysis ===\n");
     console.log(analysis);
     console.log("\n===================\n");
 
-    // Save to file
     const outputPath = path.join(failureDir, "failure.ai.txt");
     fs.writeFileSync(outputPath, analysis);
 
