@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
   issues: write
   pull-requests: write
 
@@ -18,6 +19,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      
+      - name: Download baseline artifacts from main (last successful)
+        if: github.event_name == 'pull_request'
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: ci.yml
+          branch: main
+          name: ai-failure-artifacts
+          path: baseline-artifacts
+          if_no_artifact_found: warn
 
       - name: Build Docker image
         run: docker build -t qa-framework .
@@ -71,92 +82,25 @@ jobs:
             echo "No artifacts directory found."
           fi
 
+      - name: Debug baseline contents
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          echo "Baseline:"
+          ls -la baseline-artifacts || true
+          echo "Current:"
+          ls -la artifacts || true
+          
+      - name: Install node deps (for CI scripts)
+        if: always() && github.event_name == 'pull_request'
+        run: npm ci
+
+      - name: Compute failure diff
+        if: always() && github.event_name == 'pull_request'
+        run: npx tsx ci/computeDiff.ts
+
+
       - name: Comment PR with AI summary
         if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const path = require('path');
-
-            const root = "artifacts";
-            if (!fs.existsSync(root)) return;
-
-            function findAiFiles(dir, results = []) {
-              for (const file of fs.readdirSync(dir)) {
-                const full = path.join(dir, file);
-                if (fs.statSync(full).isDirectory()) {
-                  findAiFiles(full, results);
-                } else if (file === "ai.txt") {
-                  results.push(full);
-                }
-              }
-              return results;
-            }
-
-            const files = findAiFiles(root);
-            if (files.length === 0) return;
-
-            const severityEmoji = { low: "🟢", medium: "🟡", high: "🔴" };
-
-            let tableRows = "";
-            let detailedSections = "";
-
-            for (const file of files) {
-              const content = fs.readFileSync(file, "utf8");
-              const jsonStart = content.indexOf("{");
-              const data = JSON.parse(content.substring(jsonStart));
-
-              const emoji = severityEmoji[data.severity] || "⚪";
-
-              tableRows += `| ${path.basename(data.file)} | ${data.line} | ${data.failure_type} | ${emoji} ${data.severity} | ${data.confidence} |\n`;
-
-              const sectionLines = [
-                `### ${data.file}:${data.line}`,
-                "",
-                `Type: ${data.failure_type}`,
-                `Severity: ${emoji} ${data.severity}`,
-                `Confidence: ${data.confidence}`,
-                ""
-              ];
-              detailedSections += sectionLines.join("\n") + "\n";
-            }
-
-            const bodyLines = [
-              "## 🤖 AI Failure Summary",
-              "",
-              "| File | Line | Type | Severity | Confidence |",
-              "|------|------|------|----------|------------|",
-              tableRows ? tableRows.trimEnd() : "_No failures detected_",
-              "",
-              detailedSections.trimEnd()
-            ];
-            const body = bodyLines.join("\n");
-
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number
-            });
-
-            const existing = comments.find(c =>
-              c.user.type === "Bot" &&
-              typeof c.body === "string" &&
-              c.body.startsWith("## 🤖 AI Failure Summary")
-            );
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body
-              });
-            }
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npx tsx ci/postComment.ts
