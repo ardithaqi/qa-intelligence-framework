@@ -25,7 +25,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v3
         with:
           workflow: ci.yml
-          branch: main
+          branch: ${{ github.base_ref }}
           name: ai-failure-artifacts
           path: baseline-artifacts
           if_no_artifact_found: warn
