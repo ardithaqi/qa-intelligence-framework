@@ -19,6 +19,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      
+      - name: Download baseline artifacts from main (last successful)
+        if: github.event_name == 'pull_request'
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          workflow: ci.yml
+          branch: main
+          name: ai-failure-artifacts
+          path: baseline-artifacts
+          if_no_artifact_found: warn
 
       - name: Build Docker image
         run: docker build -t qa-framework .
@@ -71,35 +81,26 @@ jobs:
           else
             echo "No artifacts directory found."
           fi
-      
-      - name: Download baseline AI artifacts from main
-        if: github.event_name == 'pull_request' && github.base_ref == 'main'
-        uses: dawidd6/action-download-artifact@v3
-        continue-on-error: true
-        with:
-          workflow: ci.yml
-          branch: main
-          workflow_conclusion: success
-          name: ai-failure-artifacts
-          path: baseline-artifacts
-          if_no_artifact_found: ignore
 
       - name: Debug baseline contents
-        if: always() && github.event_name == 'pull_request' && github.base_ref == 'main'
+        if: always() && github.event_name == 'pull_request'
         run: |
           echo "Baseline:"
           ls -la baseline-artifacts || true
           echo "Current:"
           ls -la artifacts || true
           
+      - name: Install node deps (for CI scripts)
+        if: always() && github.event_name == 'pull_request'
+        run: npm ci
+
       - name: Compute failure diff
-        if: always() && github.event_name == 'pull_request' && github.base_ref == 'main'
-        run: node ci/computeDiff.ts
+        if: always() && github.event_name == 'pull_request'
+        run: npx tsx ci/computeDiff.ts
+
 
       - name: Comment PR with AI summary
         if: always() && github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const script = require('./ci/postComment.ts');
-            await script({ github, context });
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npx tsx ci/postComment.ts

@@ -77,6 +77,5 @@ fs.writeFileSync("failure-diff.json", JSON.stringify(result, null, 2));
 console.log("Diff result:", result);
 
 if (newFailures.length > 0) {
-    console.log(`New failures detected: ${newFailures.length}`);
     process.exit(1);
 }

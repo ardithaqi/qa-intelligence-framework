@@ -1,4 +1,5 @@
 import fs from "fs";
+import { Octokit } from "@octokit/rest";
 
 interface Failure {
     file: string;
@@ -14,8 +15,33 @@ interface DiffResult {
     fixedFailures: Failure[];
 }
 
-module.exports = async ({ github, context }: any) => {
-    if (!fs.existsSync("failure-diff.json")) return;
+async function main() {
+    const token = process.env.GITHUB_TOKEN;
+    const repoFull = process.env.GITHUB_REPOSITORY;
+    const ref = process.env.GITHUB_REF;
+
+    if (!token) {
+        console.error("GITHUB_TOKEN missing");
+        process.exit(1);
+    }
+
+    if (!repoFull || !ref) {
+        console.log("Not running inside GitHub Actions PR context.");
+        return;
+    }
+
+    const prMatch = ref.match(/refs\/pull\/(\d+)\/merge/);
+    if (!prMatch) {
+        console.log("Not a pull request run. Skipping comment.");
+        return;
+    }
+
+    const prNumber = Number(prMatch[1]);
+
+    if (!fs.existsSync("failure-diff.json")) {
+        console.log("No failure-diff.json found. Skipping comment.");
+        return;
+    }
 
     const diff: DiffResult = JSON.parse(
         fs.readFileSync("failure-diff.json", "utf8")
@@ -28,10 +54,9 @@ module.exports = async ({ github, context }: any) => {
         unchangedFailures.length === 0 &&
         fixedFailures.length === 0
     ) {
+        console.log("No failure changes. Skipping comment.");
         return;
     }
-
-    let body = "## AI Failure Diff Summary\n\n";
 
     function formatList(title: string, list: Failure[]) {
         if (list.length === 0) return "";
@@ -42,36 +67,48 @@ module.exports = async ({ github, context }: any) => {
         return section + "\n";
     }
 
+    let body = "## AI Failure Diff Summary\n\n";
     body += formatList("New Failures", newFailures);
     body += formatList("Still Failing", unchangedFailures);
     body += formatList("Fixed Failures", fixedFailures);
 
-    const { data: comments } = await github.rest.issues.listComments({
-        owner: context.repo.owner,
-        repo: context.repo.repo,
-        issue_number: context.issue.number
+    const [owner, repo] = repoFull.split("/");
+
+    const octokit = new Octokit({ auth: token });
+
+    const { data: comments } = await octokit.issues.listComments({
+        owner,
+        repo,
+        issue_number: prNumber,
     });
 
     const existing = comments.find(
-        (c: any) =>
-            c.user.type === "Bot" &&
+        (c) =>
+            c.user?.type === "Bot" &&
             typeof c.body === "string" &&
             c.body.startsWith("## AI Failure Diff Summary")
     );
 
     if (existing) {
-        await github.rest.issues.updateComment({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
+        await octokit.issues.updateComment({
+            owner,
+            repo,
             comment_id: existing.id,
-            body
+            body,
         });
+        console.log("Updated existing AI summary comment.");
     } else {
-        await github.rest.issues.createComment({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: context.issue.number,
-            body
+        await octokit.issues.createComment({
+            owner,
+            repo,
+            issue_number: prNumber,
+            body,
         });
+        console.log("Created new AI summary comment.");
     }
-};
+}
+
+main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+});
