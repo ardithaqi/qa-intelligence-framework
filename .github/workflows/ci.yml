@@ -18,10 +18,10 @@ jobs:
         run: docker build -t qa-framework .
 
       - name: Run tests inside Docker
+        id: test
         run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/app \
-            -w /app \
+          set +e
+          docker run --name qa-run \
             -e AI_ANALYSIS=true \
             -e BASE_URL=https://www.saucedemo.com \
             -e HEADLESS=true \
@@ -30,6 +30,11 @@ jobs:
             -e TEST_USERNAME=${{ secrets.TEST_USERNAME }} \
             -e TEST_PASSWORD=${{ secrets.TEST_PASSWORD }} \
             qa-framework
+          EXIT=$?
+          docker cp qa-run:/app/playwright-report ./playwright-report 2>/dev/null || true
+          docker cp qa-run:/app/artifacts ./artifacts 2>/dev/null || true
+          docker rm qa-run 2>/dev/null || true
+          exit $EXIT
       
       - name: Upload Playwright HTML report
         if: always()
