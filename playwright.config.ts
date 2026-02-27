@@ -27,7 +27,7 @@ export default defineConfig({
   fullyParallel: true,
 
   workers: Number(process.env.PW_WORKERS ?? 2),
-  retries: Number(process.env.PW_RETRIES ?? 1),
+  retries: Number(process.env.PW_RETRIES ?? 0),
   globalTeardown: require.resolve("./src/core/globalTeardown"),
   globalSetup: require.resolve("./src/core/globalSetup"),
   use: {
