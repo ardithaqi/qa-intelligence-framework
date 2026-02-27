@@ -31,7 +31,7 @@ jobs:
           if_no_artifact_found: warn
 
       - name: Build Docker image
-        run: docker build -t qa-framework .
+        run: docker build --no-cache -t qa-framework .
 
       - name: Run tests inside Docker
         id: test
