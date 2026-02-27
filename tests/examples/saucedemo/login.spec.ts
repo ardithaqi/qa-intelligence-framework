@@ -17,5 +17,5 @@ test("user can login", async ({ page }) => {
   await step("Assert logged in", async () => {
     await login.assertLoggedIn();
   });
-  // expect(1).toBe(2);
+  expect(1).toBe(2);
 });
