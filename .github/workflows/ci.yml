@@ -34,3 +34,10 @@ jobs:
         with:
           name: playwright-report
           path: playwright-report/
+
+      - name: Upload AI failure artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-failure-artifacts
+          path: artifacts/
