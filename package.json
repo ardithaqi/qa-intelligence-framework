@@ -19,8 +19,9 @@
   "type": "commonjs",
   "devDependencies": {
     "@playwright/test": "^1.58.2",
-    "@types/node": "^22.10.2",
-    "ts-node": "^10.9.2"
+    "@types/node": "^22.19.13",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "dotenv": "^17.3.1",
