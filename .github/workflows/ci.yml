@@ -111,23 +111,52 @@ jobs:
 
               tableRows += `| ${path.basename(data.file)} | ${data.line} | ${data.failure_type} | ${emoji} ${data.severity} | ${data.confidence} |\n`;
 
-              detailedSections += `
-### ${data.file}:${data.line}
+              const sectionLines = [
+                `### ${data.file}:${data.line}`,
+                "",
+                `Type: ${data.failure_type}`,
+                `Severity: ${emoji} ${data.severity}`,
+                `Confidence: ${data.confidence}`,
+                ""
+              ];
+              detailedSections += sectionLines.join("\n") + "\n";
+            }
 
-Type: ${data.failure_type}
-Severity: ${emoji} ${data.severity}
-Confidence: ${data.confidence}
-`;
-            } // end for
+            const bodyLines = [
+              "## 🤖 AI Failure Summary",
+              "",
+              "| File | Line | Type | Severity | Confidence |",
+              "|------|------|------|----------|------------|",
+              tableRows ? tableRows.trimEnd() : "_No failures detected_",
+              "",
+              detailedSections.trimEnd()
+            ];
+            const body = bodyLines.join("\n");
 
-            const body = `
-## 🤖 AI Failure Summary
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
 
-| File | Line | Type | Severity | Confidence |
-|------|------|------|----------|------------|
-${tableRows}
+            const existing = comments.find(c =>
+              c.user.type === "Bot" &&
+              typeof c.body === "string" &&
+              c.body.startsWith("## 🤖 AI Failure Summary")
+            );
 
-${detailedSections}
-`;
-
-            await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body });
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
