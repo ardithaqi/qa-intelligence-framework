@@ -31,6 +31,10 @@ jobs:
           workflow_conclusion: ""
           if_no_artifact_found: warn
 
+      - name: Print baseline ai.txt
+        run: |
+          find baseline-artifacts -name "ai.txt" -exec cat {} \;
+
       - name: Build Docker image
         run: docker build --no-cache -t qa-framework .
 
