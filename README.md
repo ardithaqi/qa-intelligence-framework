@@ -1,4 +1,4 @@
-# QA Automation Framework
+# QA Intelligence Framework
 
 Production-ready Playwright framework with:
 
