@@ -16,7 +16,7 @@ This repository is designed to be used as:
 
 ---
 
-## 🚀 Features
+## Features
 
 - Playwright (TypeScript)
 - Docker-first execution
@@ -29,7 +29,8 @@ This repository is designed to be used as:
 
 ---
 
-## 📦 Project Structure
+## Project Structure
+
 
 ```
 ├── src/
@@ -62,7 +63,8 @@ This repository is designed to be used as:
 
 ---
 
-## 🧪 Writing Tests
+## Writing Tests
+---
 
 ### Basic Test Example
 
@@ -93,6 +95,7 @@ This enables:
 - Flaky detection
 - CI diff intelligence
 
+---
 ### Environment Configuration
 
 The framework reads environment variables via `.env`. For CI runs, the same variables (including `BASE_URL`) are set in **`.github/workflows/ci.yml`**—update that file if you use a different app URL.
@@ -109,6 +112,8 @@ PW_RETRIES=1
 ---
 
 ## Running Tests
+
+---
 
 **Local (without Docker)**
 
