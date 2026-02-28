@@ -7,6 +7,7 @@ interface Failure {
     failure_type: string;
     severity: string;
     confidence: number;
+    is_flaky_suspected?: boolean;
 }
 
 interface DiffResult {
@@ -49,6 +50,9 @@ async function main() {
 
     const { newFailures, unchangedFailures, fixedFailures } = diff;
 
+    const flaky = newFailures.filter(f => f.is_flaky_suspected);
+    const realNewFailures = newFailures.filter(f => !f.is_flaky_suspected);
+
     if (
         newFailures.length === 0 &&
         unchangedFailures.length === 0 &&
@@ -58,19 +62,37 @@ async function main() {
         return;
     }
 
-    function formatList(title: string, list: Failure[]) {
+    function formatSection(
+        title: string,
+        list: Failure[],
+        includeSeverity = true
+    ) {
         if (list.length === 0) return "";
+
         let section = `### ${title} (${list.length})\n\n`;
+
         for (const item of list) {
-            section += `- ${item.file}:${item.line} | ${item.failure_type} | severity: ${item.severity} | confidence: ${item.confidence}\n`;
+            const severityPart = includeSeverity
+                ? ` | severity: ${item.severity}`
+                : "";
+
+            section += `• ${item.file}:${item.line} | ${item.failure_type}${severityPart} | confidence: ${item.confidence}\n`;
         }
+
         return section + "\n";
     }
 
+    const now = new Date().toISOString();
+    const commit = process.env.GITHUB_SHA?.slice(0, 7);
+
     let body = "## AI Failure Diff Summary\n\n";
-    body += formatList("New Failures", newFailures);
-    body += formatList("Still Failing", unchangedFailures);
-    body += formatList("Fixed Failures", fixedFailures);
+    body += `Last updated: ${now}\n`;
+    if (commit) body += `Commit: ${commit}\n`;
+    body += "\n";
+    body += formatSection("New Failures", realNewFailures);
+    body += formatSection("Flaky", flaky, false);
+    body += formatSection("Still Failing", unchangedFailures);
+    body += formatSection("Fixed Failures", fixedFailures);
 
     const [owner, repo] = repoFull.split("/");
 

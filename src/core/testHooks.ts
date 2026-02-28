@@ -14,9 +14,14 @@ test.afterEach(async ({ page }, testInfo) => {
     });
   }
 
-  const isFailed = testInfo.status !== testInfo.expectedStatus;
+  const isRealFailure =
+    testInfo.status !== testInfo.expectedStatus;
 
-  if (isFailed) {
+  const isFlaky =
+    testInfo.retry > 0 &&
+    testInfo.status === testInfo.expectedStatus;
+
+  if (isRealFailure || isFlaky) {
     const screenshot = await page.screenshot({ fullPage: true });
     await testInfo.attach("failure-screenshot", {
       body: screenshot,
@@ -40,6 +45,8 @@ test.afterEach(async ({ page }, testInfo) => {
       html
     );
 
+    const severity = isFlaky ? "low" : "medium";
+
     const meta = {
       title: testInfo.title,
       status: testInfo.status,
@@ -49,6 +56,8 @@ test.afterEach(async ({ page }, testInfo) => {
       url: page.url(),
       project: testInfo.project.name,
       duration: testInfo.duration,
+      is_flaky_suspected: isFlaky,
+      severity: severity
     };
 
     fs.writeFileSync(

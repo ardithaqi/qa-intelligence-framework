@@ -5,8 +5,9 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci
 
+RUN npx playwright install --with-deps
+
 COPY . .
 
-RUN npx playwright install --with-deps
 
 CMD ["npx", "playwright", "test"]

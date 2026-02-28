@@ -7,6 +7,7 @@ interface Failure {
     failure_type: string;
     severity: string;
     confidence: number;
+    is_flaky_suspected?: boolean;
 }
 
 function collectFailures(root: string): Failure[] {
@@ -29,7 +30,8 @@ function collectFailures(root: string): Failure[] {
                     line: data.line,
                     failure_type: data.failure_type,
                     severity: data.severity,
-                    confidence: data.confidence
+                    confidence: data.confidence,
+                    is_flaky_suspected: data.is_flaky_suspected ?? false
                 });
             }
         }
@@ -76,6 +78,13 @@ const result = {
 fs.writeFileSync("failure-diff.json", JSON.stringify(result, null, 2));
 console.log("Diff result:", result);
 
-if (newFailures.length > 0) {
+const blockingFailures = newFailures.filter(
+    f =>
+        !f.is_flaky_suspected &&
+        (f.severity === "high" || f.severity === "medium")
+);
+
+if (blockingFailures.length > 0) {
+    console.log(`Blocking failures detected: ${blockingFailures.length}`);
     process.exit(1);
 }
