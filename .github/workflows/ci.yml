@@ -36,6 +36,8 @@ jobs:
 
       - name: Run tests inside Docker
         id: test
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           set +e
           docker run --name qa-run \
@@ -52,6 +54,9 @@ jobs:
           docker cp qa-run:/app/playwright-report ./playwright-report 2>/dev/null || true
           docker cp qa-run:/app/artifacts ./artifacts 2>/dev/null || true
           docker rm qa-run 2>/dev/null || true
+          # On PR: do not fail here — computeDiff will fail the job only for new blocking failures
+          # On push (e.g. to master): fail if tests failed so the branch can be red
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then exit 0; fi
           exit $EXIT
       
       - name: Upload Playwright HTML report
@@ -98,7 +103,6 @@ jobs:
       - name: Compute failure diff
         if: always() && github.event_name == 'pull_request'
         run: npx tsx ci/computeDiff.ts
-
 
       - name: Comment PR with AI summary
         if: always() && github.event_name == 'pull_request'
