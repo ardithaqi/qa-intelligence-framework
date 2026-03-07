@@ -34,8 +34,9 @@ test.afterEach(async ({ page }, testInfo) => {
     );
     const specName = path.basename(testInfo.file);
     const safeTitle = testInfo.title.replace(/[^\w\d]/g, "_");
+    const attemptDir = `attempt-${testInfo.retry}`;
 
-    const testDir = path.join(runDir, specName, safeTitle);
+    const testDir = path.join(runDir, specName, safeTitle, attemptDir);
     fs.mkdirSync(testDir, { recursive: true });
 
     const html = await page.content();
@@ -56,6 +57,7 @@ test.afterEach(async ({ page }, testInfo) => {
       url: page.url(),
       project: testInfo.project.name,
       duration: testInfo.duration,
+      retry: testInfo.retry,
       is_flaky_suspected: isFlaky,
       severity: severity
     };

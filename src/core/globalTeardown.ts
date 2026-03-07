@@ -35,14 +35,18 @@ export default async function globalTeardown() {
     for (const metaPath of metaFiles) {
         console.log(`Analyzing: ${metaPath}`);
 
-        const analysis = await analyzeFailureFile(metaPath);
+        try {
+            const analysis = await analyzeFailureFile(metaPath);
 
-        if (!analysis) continue;
+            if (!analysis) continue;
 
-        const outputFile = metaPath.replace("meta.json", "ai.txt");
+            const outputFile = metaPath.replace("meta.json", "ai.txt");
 
-        fs.writeFileSync(outputFile, analysis);
+            fs.writeFileSync(outputFile, analysis);
 
-        console.log(`Saved AI analysis: ${path.basename(outputFile)}\n`);
+            console.log(`Saved AI analysis: ${path.basename(outputFile)}\n`);
+        } catch (error) {
+            console.error(`AI analysis failed for ${metaPath}:`, error);
+        }
     }
 }

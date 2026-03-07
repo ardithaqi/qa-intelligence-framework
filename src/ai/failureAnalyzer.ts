@@ -1,11 +1,51 @@
 import fs from "fs";
+import path from "path";
 import OpenAI from "openai";
 
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
-});
+function getOpenAIClient(): OpenAI | null {
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    if (!apiKey) {
+        console.warn("OPENAI_API_KEY is not set. Skipping AI failure analysis.");
+        return null;
+    }
+
+    return new OpenAI({ apiKey });
+}
+
+function findLatestMetaFile(root = "artifacts"): string | null {
+    if (!fs.existsSync(root)) return null;
+
+    let latestPath: string | null = null;
+    let latestMtime = -1;
+
+    function walk(dir: string) {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const fullPath = path.join(dir, entry.name);
+
+            if (entry.isDirectory()) {
+                walk(fullPath);
+                continue;
+            }
+
+            if (entry.name !== "meta.json") continue;
+
+            const stats = fs.statSync(fullPath);
+            if (stats.mtimeMs > latestMtime) {
+                latestMtime = stats.mtimeMs;
+                latestPath = fullPath;
+            }
+        }
+    }
+
+    walk(root);
+    return latestPath;
+}
 
 export async function analyzeFailureFile(jsonFilePath: string): Promise<string | null> {
+    const openai = getOpenAIClient();
+    if (!openai) return null;
+
     const htmlPath = jsonFilePath.replace(".json", ".html");
 
     const meta = JSON.parse(fs.readFileSync(jsonFilePath, "utf-8"));
@@ -110,4 +150,16 @@ export async function analyzeFailureFile(jsonFilePath: string): Promise<string |
     }
 
     return content;
+}
+
+export async function analyzeLatestFailure(): Promise<string | null> {
+    const latestMetaFile = findLatestMetaFile();
+
+    if (!latestMetaFile) {
+        console.log("No failure metadata found in artifacts.");
+        return null;
+    }
+
+    console.log(`Analyzing latest failure: ${latestMetaFile}`);
+    return analyzeFailureFile(latestMetaFile);
 }

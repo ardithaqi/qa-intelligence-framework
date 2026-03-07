@@ -10,6 +10,20 @@ interface Failure {
     is_flaky_suspected?: boolean;
 }
 
+function extractTrailingJson(content: string): Failure | null {
+    const trimmed = content.trimEnd();
+
+    for (let i = trimmed.lastIndexOf("{"); i >= 0; i = trimmed.lastIndexOf("{", i - 1)) {
+        try {
+            return JSON.parse(trimmed.slice(i)) as Failure;
+        } catch {
+            // Keep scanning backward until the trailing JSON object is found.
+        }
+    }
+
+    return null;
+}
+
 function collectFailures(root: string): Failure[] {
     const failures: Failure[] = [];
     if (!fs.existsSync(root)) return failures;
@@ -21,10 +35,9 @@ function collectFailures(root: string): Failure[] {
                 walk(full);
             } else if (file === "ai.txt") {
                 const content = fs.readFileSync(full, "utf8");
-                const jsonStart = content.indexOf("{");
-                if (jsonStart === -1) continue;
+                const data = extractTrailingJson(content);
+                if (!data) continue;
 
-                const data = JSON.parse(content.substring(jsonStart));
                 failures.push({
                     file: data.file,
                     line: data.line,
