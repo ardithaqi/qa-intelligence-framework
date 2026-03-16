@@ -106,7 +106,7 @@ jobs:
 
       - name: Install CI intelligence engine
         if: always() && github.event_name == 'pull_request'
-        run: npm install @ard/qa-ci-intelligence
+        run: npm install qa-ci-intelligence
 
       - name: Compute failure diff
         if: always() && github.event_name == 'pull_request'
