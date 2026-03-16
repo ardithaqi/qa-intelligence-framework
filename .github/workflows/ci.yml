@@ -110,7 +110,7 @@ jobs:
 
       - name: Compute failure diff
         if: always() && github.event_name == 'pull_request'
-        run: qa-ai-diff --baseline baseline-artifacts --current artifacts
+        run: npx qa-ci-diff --baseline baseline-artifacts --current artifacts
 
       - name: Restore failure history cache
         if: always() && github.event_name == 'pull_request'
@@ -127,4 +127,4 @@ jobs:
         if: always() && github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: qa-ai-comment
+        run: npx qa-ci-comment
