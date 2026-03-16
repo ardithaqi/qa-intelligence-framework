@@ -127,4 +127,9 @@ jobs:
         if: always() && github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: npx qa-ci-comment
+        run: |
+          npx qa-ci-comment \
+            --diff failure-diff.json \
+            --repo ${{ github.repository }} \
+            --pr ${{ github.event.pull_request.number }} \
+            --token $GITHUB_TOKEN
