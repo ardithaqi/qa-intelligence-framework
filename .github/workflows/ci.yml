@@ -104,6 +104,17 @@ jobs:
         if: always() && github.event_name == 'pull_request'
         run: npx tsx ci/computeDiff.ts
 
+      - name: Restore failure history cache
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: failure-history-${{ github.head_ref || github.ref_name }}
+
+      - name: Update failure history (recurrence)
+        if: always() && github.event_name == 'pull_request'
+        run: npx tsx ci/updateFailureHistory.ts
+
       - name: Comment PR with AI summary
         if: always() && github.event_name == 'pull_request'
         env:
