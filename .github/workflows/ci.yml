@@ -20,6 +20,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
+      - name: Clean artifacts
+        if: always()
+        run: rm -rf artifacts  
+      
       - name: Download baseline artifacts from main (last successful)
         if: github.event_name == 'pull_request'
         uses: dawidd6/action-download-artifact@v3
@@ -100,23 +104,27 @@ jobs:
         if: always() && github.event_name == 'pull_request'
         run: npm ci
 
+      - name: Install CI intelligence engine
+        if: always() && github.event_name == 'pull_request'
+        run: npm install @ard/qa-ci-intelligence
+
       - name: Compute failure diff
         if: always() && github.event_name == 'pull_request'
-        run: npx tsx ci/computeDiff.ts
+        run: qa-ai-diff --baseline baseline-artifacts --current artifacts
 
       - name: Restore failure history cache
         if: always() && github.event_name == 'pull_request'
         uses: actions/cache@v4
         with:
           path: .cache
-          key: failure-history-${{ github.head_ref || github.ref_name }}
+          key: failure-history-${{ github.repository }}
 
       - name: Update failure history (recurrence)
         if: always() && github.event_name == 'pull_request'
-        run: npx tsx ci/updateFailureHistory.ts
+        run: npx qa-ci-history
 
       - name: Comment PR with AI summary
         if: always() && github.event_name == 'pull_request'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: npx tsx ci/postComment.ts
+        run: qa-ai-comment
