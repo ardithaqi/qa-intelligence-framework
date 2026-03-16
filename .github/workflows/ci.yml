@@ -117,7 +117,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .cache
-          key: failure-history-${{ github.repository }}
+          key: failure-history-${{ github.repository }}-${{ github.sha }}
+          restore-keys: |
+            failure-history-${{ github.repository }}-
 
       - name: Update failure history (recurrence)
         if: always() && github.event_name == 'pull_request'
