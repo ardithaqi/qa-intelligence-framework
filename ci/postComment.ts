@@ -8,6 +8,8 @@ interface Failure {
     severity: string;
     confidence: number;
     is_flaky_suspected?: boolean;
+    first_seen?: string;
+    occurrence_count?: number;
 }
 
 interface DiffResult {
@@ -62,6 +64,15 @@ async function main() {
         return;
     }
 
+    function recurrenceSuffix(f: Failure): string {
+        if (f.occurrence_count == null) return "";
+        const n = f.occurrence_count;
+        const date = f.first_seen ? new Date(f.first_seen).toISOString().slice(0, 10) : "";
+        if (n === 1) return " (first time)";
+        const ord = n % 10 === 1 && n % 100 !== 11 ? "st" : n % 10 === 2 && n % 100 !== 12 ? "nd" : n % 10 === 3 && n % 100 !== 13 ? "rd" : "th";
+        return date ? ` (${n}${ord} time since ${date})` : ` (${n}×)`;
+    }
+
     function formatSection(
         title: string,
         list: Failure[],
@@ -75,8 +86,9 @@ async function main() {
             const severityPart = includeSeverity
                 ? ` | severity: ${item.severity}`
                 : "";
+            const recur = recurrenceSuffix(item);
 
-            section += `• ${item.file}:${item.line} | ${item.failure_type}${severityPart} | confidence: ${item.confidence}\n`;
+            section += `• ${item.file}:${item.line} | ${item.failure_type}${severityPart} | confidence: ${item.confidence}${recur}\n`;
         }
 
         return section + "\n";
