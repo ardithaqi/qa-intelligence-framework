@@ -11,8 +11,12 @@ Production-ready Playwright framework with:
 
 This repository is designed to be used as:
 
-1) A GitHub Template for new automation projects  
-2) A base for companies that want structured QA + intelligent CI  
+1) A **GitHub Template** for new automation projects  
+2) A reference for wiring CI, Docker, and example tests  
+
+**Already have a Playwright project?** Install the engine as a package instead — no need to copy this repo:
+
+→ **[qa-intelligence on npm](https://www.npmjs.com/package/qa-intelligence)**  
 
 
 ## Features
@@ -44,9 +48,6 @@ This repository is designed to be used as:
 │   │   ├── basePage.ts
 │   │   └── ...
 │   └── ...
-├── ci/
-│   ├── computeDiff.ts
-│   └── postComment.ts
 ├── tests/
 │   ├── examples/
 │   │   └── saucedemo/
@@ -210,6 +211,8 @@ Set in Repository Settings → Secrets:
 
 ## Converting This Into Your Own Project
 
+### Option A: Use this template
+
 1. Click **Use this template**
 2. Clone new repo
 3. Set secrets
@@ -217,6 +220,38 @@ Set in Repository Settings → Secrets:
 5. Add your tests
 6. Push
 7. CI handles the rest
+
+### Option B: Add to an existing project (npm package)
+
+Install the engine into any Playwright repo:
+
+```bash
+npm install qa-intelligence @playwright/test
+```
+
+**`playwright.config.ts`**
+
+```ts
+import { defineConfig } from "@playwright/test";
+import { env } from "qa-intelligence/config/env";
+
+export default defineConfig({
+  testDir: "./tests",
+  globalSetup: require.resolve("qa-intelligence/playwright/globalSetup"),
+  globalTeardown: require.resolve("qa-intelligence/playwright/globalTeardown"),
+  use: { baseURL: env.BASE_URL, headless: env.HEADLESS },
+});
+```
+
+**Tests**
+
+```ts
+import { test, expect } from "qa-intelligence/playwright";
+```
+
+You still provide: `tests/`, `.env`, and copy `.github/workflows/ci.yml` from this template.
+
+Full setup guide: **[qa-intelligence README](https://github.com/ardithaqi/qa-intelligence)**
 
 
 ## Author
