@@ -205,7 +205,9 @@ Set in Repository Settings → Secrets:
 
 ## Converting This Into Your Own Project
 
-### Option A: Use this template
+### Use this template (new automation project)
+
+For a **standalone** test repo, use this template as-is — everything lives at the repo root and [`.github/workflows/ci.yml`](.github/workflows/ci.yml) works unchanged.
 
 1. Click **Use this template**
 2. Clone new repo
@@ -215,17 +217,81 @@ Set in Repository Settings → Secrets:
 6. Push
 7. CI handles the rest
 
-### Option B: Add to an existing project (npm package)
+---
+
+### Add to an existing project (npm package)
+
+Already have an app repo with its own `package.json`? Install the engine as a package. Only copy two files from this repo: [`Dockerfile`](Dockerfile) and [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+Create a `playwright/` subfolder at the repo root and keep all E2E tooling there, separate from your main app code.
+
+#### Folder layout
+
+```
+my-company-app/
+├── src/                          # your main app — unchanged
+│
+└── playwright/
+    ├── package.json              # qa-intelligence + @playwright/test
+    ├── package-lock.json
+    ├── playwright.config.ts
+    ├── tsconfig.json
+    ├── Dockerfile
+    ├── .env                      
+    ├── tests/
+    │   ├── smoke/
+    │   └── regression/
+    ├── artifacts/                # generated, gitignored
+    └── test-results/             # generated, gitignored
+```
+
+You will have **two `package.json` files**. The E2E workflow uses only `playwright/package.json`.
+
+The **Setup** section below defines each file (`tsconfig.json`, `Dockerfile`, `playwright.config.ts`, etc.).
+
+#### Setup
 
 ```bash
+git checkout -b feat/qa-intelligence
+
+mkdir playwright
+cd playwright
+npm init -y
 npm install qa-intelligence @playwright/test
+npx playwright install
 ```
 
 Peer dependencies (`typescript`, `@types/node`) are installed automatically.
 
-**`tsconfig.json`** — use `moduleResolution: "node16"` so TypeScript resolves the package `exports` map. See the [engine README](https://github.com/ardithaqi/qa-intelligence) for a full example.
+**`playwright/.env`**
 
-**`playwright.config.ts`**
+```env
+BASE_URL=https://your-app.example.com
+HEADLESS=true
+PW_WORKERS=2
+PW_RETRIES=1
+```
+
+**`playwright/tsconfig.json`**
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "strict": true,
+    "esModuleInterop": true,
+    "types": ["node"],
+    "skipLibCheck": true
+  },
+  "include": ["tests/**/*", "playwright.config.ts"]
+}
+```
+
+> `module` and `moduleResolution` must both be `"Node16"` so TypeScript resolves the package `exports` map.
+
+**`playwright/playwright.config.ts`**
 
 ```ts
 import { defineConfig } from "@playwright/test";
@@ -233,23 +299,109 @@ import { env } from "qa-intelligence/config/env";
 
 export default defineConfig({
   testDir: "./tests",
+  retries: env.PW_RETRIES,
+  workers: env.PW_WORKERS,
   globalSetup: require.resolve("qa-intelligence/playwright/globalSetup"),
   globalTeardown: require.resolve("qa-intelligence/playwright/globalTeardown"),
-  use: { baseURL: env.BASE_URL, headless: env.HEADLESS },
+  use: {
+    baseURL: env.BASE_URL,
+    headless: env.HEADLESS,
+    trace: "on-first-retry",
+    screenshot: "only-on-failure",
+    video: "retain-on-failure",
+  },
 });
 ```
 
-**Tests**
+**`playwright/tests/*.spec.ts`**
 
 ```ts
 import { test, expect } from "qa-intelligence/playwright";
+
+test("homepage loads", async ({ page }) => {
+  await page.goto("/");
+  await expect(page).toHaveTitle(/My App/);
+});
 ```
 
-You still provide: `tests/`, `.env`, and copy [`.github/workflows/ci.yml`](https://github.com/ardithaqi/qa-intelligence-framework/blob/master/.github/workflows/ci.yml) from this template.
+Always import `test` from the package — **not** directly from Playwright. This enables AI analysis, artifact generation, flaky detection, and CI diff intelligence.
 
-Full setup guide: **[qa-intelligence README](https://github.com/ardithaqi/qa-intelligence)**
+**`playwright/Dockerfile`**
 
-> **Note:** This template currently uses local `src/core/` for tests. The same logic lives in the `qa-intelligence` npm package — Option B uses the package directly without copying `src/core/`.
+Create this file in `playwright/` (same content as [`Dockerfile`](Dockerfile) in this repo):
+
+```dockerfile
+FROM mcr.microsoft.com/playwright:v1.58.2-jammy
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+RUN npm ci
+
+RUN npx playwright install --with-deps
+
+COPY . .
+
+CMD ["npx", "playwright", "test"]
+```
+
+**Run locally**
+
+```bash
+cd playwright
+npx playwright test
+```
+
+**Root `.gitignore`** — add:
+
+```
+playwright/node_modules/
+playwright/artifacts/
+playwright/test-results/
+playwright/.env
+```
+
+#### CI workflow changes
+
+Copy [`.github/workflows/ci.yml`](.github/workflows/ci.yml) from the root of this repo into your project, then apply these changes for the `playwright/` layout:
+
+1. **Add** under the job (`runs-on`):
+
+```yaml
+defaults:
+  run:
+    working-directory: playwright
+```
+
+2. **Update artifact upload paths** (paths are always relative to repo root):
+
+```yaml
+path: playwright/playwright-report/   # was playwright-report/
+path: playwright/artifacts/           # was artifacts/
+```
+
+3. **Update baseline path** in debug + diff steps (baseline stays at repo root):
+
+```yaml
+ls -la ../baseline-artifacts          # was baseline-artifacts
+npx qa-intelligence-diff --baseline ../baseline-artifacts --current artifacts
+```
+
+4. **Remove** the `Install CI intelligence engine` step — `qa-intelligence` is already in `playwright/package.json`.
+
+5. **Update** failure history cache path:
+
+```yaml
+path: playwright/.cache               # was .cache
+```
+
+6. Place `Dockerfile` inside `playwright/` (see above). With `working-directory: playwright`, `docker build .` runs against that folder.
+
+Everything else in the workflow stays the same. The root `package.json` is not used by the E2E job.
+
+Full engine reference: **[qa-intelligence README](https://github.com/ardithaqi/qa-intelligence)**
+
+> **Note:** This template uses local `src/core/` for its example tests. The same logic lives in the `qa-intelligence` npm package — the adoption path above uses the package directly without copying `src/core/`.
 
 
 ## Author
