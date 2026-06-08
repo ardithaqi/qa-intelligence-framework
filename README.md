@@ -221,7 +221,10 @@ Install the engine into any Playwright repo:
 
 ```bash
 npm install qa-intelligence @playwright/test
+npm install --save-dev typescript @types/node
 ```
+
+**`tsconfig.json`** — use `moduleResolution: "node16"` so TypeScript resolves the package `exports` map. See the [engine README](https://github.com/ardithaqi/qa-intelligence) for a full example.
 
 **`playwright.config.ts`**
 
