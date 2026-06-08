@@ -217,12 +217,11 @@ Set in Repository Settings → Secrets:
 
 ### Option B: Add to an existing project (npm package)
 
-Install the engine into any Playwright repo:
-
 ```bash
 npm install qa-intelligence @playwright/test
-npm install --save-dev typescript @types/node
 ```
+
+Peer dependencies (`typescript`, `@types/node`) are installed automatically.
 
 **`tsconfig.json`** — use `moduleResolution: "node16"` so TypeScript resolves the package `exports` map. See the [engine README](https://github.com/ardithaqi/qa-intelligence) for a full example.
 
