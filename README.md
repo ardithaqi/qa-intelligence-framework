@@ -35,19 +35,13 @@ This repository is designed to be used as:
 
 ```
 ├── src/
-│   ├── ai/
-│   ├── config/
-│   ├── pages/
-│   │   └── auth.ts, loginPage.ts, ...
-│   ├── core/
-│   │   ├── testHooks.ts
-│   │   ├── steps.ts
-│   │   ├── globalTeardown.ts
-│   │   ├── globalSetup.ts
-│   │   ├── baseTest.ts
-│   │   ├── basePage.ts
-│   │   └── ...
-│   └── ...
+│   ├── ai/              # failure analyzer (also in qa-intelligence package)
+│   ├── config/          # env.ts
+│   ├── core/            # testHooks, baseTest, globalSetup/Teardown
+│   ├── examples/        # demo page objects (SauceDemo)
+│   ├── pages/           # your page objects go here
+│   ├── reporting/
+│   └── utils/
 ├── tests/
 │   ├── examples/
 │   │   └── saucedemo/
@@ -65,8 +59,8 @@ This repository is designed to be used as:
 ### Basic Test Example
 
 ```ts
-import { test } from "../src/core/testHooks";
-import { expect } from "@playwright/test";
+import { test, expect } from "../../src/core/baseTest";
+import { step } from "../../src/core/steps";
 
 test("user can login", async ({ page }) => {
   await page.goto("/");
@@ -79,7 +73,7 @@ test("user can login", async ({ page }) => {
 Use:
 
 ```ts
-import { test } from "../src/core/testHooks";
+import { test, expect } from "../../src/core/baseTest";
 ```
 
 Not directly from Playwright.
@@ -111,7 +105,7 @@ PW_RETRIES=1
 
 ```bash
 npm install
-npm run test
+npm run test:examples   # or test:smoke, test:regression, test:all
 ```
 
 **Local (Docker, recommended)**
@@ -124,7 +118,7 @@ docker run qa-framework
 
 ## Creating Your Own Tests
 
-**Tests** go in `tests/`. **Page objects and shared app code** (e.g. auth, login) go in `src/pages/` so specs can import them.
+**Tests** go in `tests/`. **Page objects** go in `src/pages/` (or `src/examples/` for demos).
 
 Recommended structure:
 
@@ -134,14 +128,14 @@ tests/
     feature.spec.ts
 src/
   pages/
-    auth.ts
     loginPage.ts
+    checkoutPage.ts
 ```
 
 Example:
 
 - `tests/auth/login.spec.ts` → import from `src/pages/loginPage.ts`
-- `tests/cart/checkout.spec.ts` → import from `src/pages/checkoutPage.ts` or `src/pages/auth.ts`
+- `tests/examples/saucedemo/login.spec.ts` → import from `src/examples/saucedemo/pages/loginPage.ts`
 
 
 ## AI Failure Analysis
@@ -177,10 +171,10 @@ On Pull Requests:
 1. Baseline artifacts are downloaded from target branch
 2. Current failures are compared
 3. PR comment shows:
-   - **New Failures**
+   - **New Issues**
    - **Flaky**
    - **Still Failing**
-   - **Fixed Failures**
+   - **Fixed Issues**
 
 Only new real failures block the PR.
 
@@ -249,9 +243,11 @@ export default defineConfig({
 import { test, expect } from "qa-intelligence/playwright";
 ```
 
-You still provide: `tests/`, `.env`, and copy `.github/workflows/ci.yml` from this template.
+You still provide: `tests/`, `.env`, and copy [`.github/workflows/ci.yml`](https://github.com/ardithaqi/qa-intelligence-framework/blob/master/.github/workflows/ci.yml) from this template.
 
 Full setup guide: **[qa-intelligence README](https://github.com/ardithaqi/qa-intelligence)**
+
+> **Note:** This template currently uses local `src/core/` for tests. The same logic lives in the `qa-intelligence` npm package — Option B uses the package directly without copying `src/core/`.
 
 
 ## Author
