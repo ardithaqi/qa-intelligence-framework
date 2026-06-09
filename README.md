@@ -105,6 +105,7 @@ PW_RETRIES=1
 
 ```bash
 npm install
+npx playwright install
 npm run test:examples   # or test:smoke, test:regression, test:all
 ```
 
