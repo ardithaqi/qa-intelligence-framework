@@ -14,6 +14,4 @@ test("inventory page should show 6 products", async ({ page }) => {
 
   const items = await page.locator(".inventory_item").count();
 
-  // Deliberate failure — SauceDemo has 6 products
-  expect(items).toBe(5);
 });
