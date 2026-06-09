@@ -17,5 +17,8 @@ test("user can login", async ({ page }) => {
   await step("Assert logged in", async () => {
     await login.assertLoggedIn();
   });
-  // expect(1).toBe(2);
+
+  // Deliberate failure — wrong product count after login
+  const items = await page.locator(".inventory_item").count();
+  expect(items).toBe(3);
 });
