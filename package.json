@@ -28,7 +28,7 @@
     "@octokit/rest": "^22.0.1",
     "dotenv": "^17.3.1",
     "openai": "^6.25.0",
-    "qa-intelligence": "^1.1.0",
+    "qa-intelligence": "^1.1.1",
     "zod": "^4.3.6"
   },
   "engines": {
