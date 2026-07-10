@@ -26,7 +26,7 @@ jobs:
       
       - name: Download baseline artifacts from main (last successful)
         if: github.event_name == 'pull_request'
-        uses: dawidd6/action-download-artifact@v3
+        uses: dawidd6/action-download-artifact@v21
         with:
           workflow: ci.yml
           branch: ${{ github.base_ref }}
@@ -70,8 +70,18 @@ jobs:
           name: playwright-report
           path: playwright-report/
 
-      - name: Upload AI failure artifacts
+      - name: Detect failure artifacts
+        id: failure_artifacts
         if: always()
+        run: |
+          if [ -d artifacts ] && [ -n "$(find artifacts -name 'ai.txt' -print -quit)" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload AI failure artifacts
+        if: always() && steps.failure_artifacts.outputs.found == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: ai-failure-artifacts
@@ -113,9 +123,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .cache
-          key: failure-history-${{ github.repository }}-${{ github.sha }}
-          restore-keys: |
-            failure-history-${{ github.repository }}-
+          key: failure-history-${{ github.repository }}
 
       - name: Update failure history (recurrence)
         if: always() && github.event_name == 'pull_request'

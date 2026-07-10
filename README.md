@@ -35,13 +35,9 @@ This repository is designed to be used as:
 
 ```
 ├── src/
-│   ├── ai/              # failure analyzer (also in qa-intelligence package)
-│   ├── config/          # env.ts
-│   ├── core/            # testHooks, baseTest, globalSetup/Teardown
 │   ├── examples/        # demo page objects (SauceDemo)
 │   ├── pages/           # your page objects go here
-│   ├── reporting/
-│   └── utils/
+│   └── utils/           # optional helpers
 ├── tests/
 │   ├── examples/
 │   │   └── saucedemo/
@@ -49,9 +45,11 @@ This repository is designed to be used as:
 │   ├── smoke/
 │   └── your-tests-here/
 ├── Dockerfile
-├── playwright.config.ts
+├── playwright.config.ts # hooks + env from qa-intelligence npm package
 └── .github/workflows/ci.yml
 ```
+
+The **intelligence engine** (hooks, AI analysis, diff, history, PR comments) lives in the [`qa-intelligence`](https://www.npmjs.com/package/qa-intelligence) npm package — not as copied files in this repo.
 
 
 ## Writing Tests
@@ -59,8 +57,8 @@ This repository is designed to be used as:
 ### Basic Test Example
 
 ```ts
-import { test, expect } from "../../src/core/baseTest";
-import { step } from "../../src/core/steps";
+import { test, expect } from "qa-intelligence/playwright";
+import { step } from "qa-intelligence/playwright/steps";
 
 test("user can login", async ({ page }) => {
   await page.goto("/");
@@ -73,7 +71,7 @@ test("user can login", async ({ page }) => {
 Use:
 
 ```ts
-import { test, expect } from "../../src/core/baseTest";
+import { test, expect } from "qa-intelligence/playwright";
 ```
 
 Not directly from Playwright.
@@ -446,8 +444,6 @@ npx qa-intelligence-diff --baseline ../baseline-artifacts --current artifacts
 Everything else in the workflow stays the same. The root `package.json` is not used by the E2E job.
 
 Full engine reference: **[qa-intelligence README](https://github.com/ardithaqi/qa-intelligence)**
-
-> **Note:** This template uses local `src/core/` for its example tests. The same logic lives in the `qa-intelligence` npm package — the adoption path above uses the package directly without copying `src/core/`.
 
 
 ## Author

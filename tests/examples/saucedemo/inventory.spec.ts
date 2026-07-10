@@ -1,4 +1,4 @@
-import { test, expect } from "../../../src/core/baseTest";
+import { test, expect } from "qa-intelligence/playwright";
 import LoginPage from "../../../src/examples/saucedemo/pages/loginPage";
 
 test("inventory page should show 6 products", async ({ page }) => {
@@ -12,6 +12,5 @@ test("inventory page should show 6 products", async ({ page }) => {
 
   await expect(page).toHaveURL(/inventory/);
 
-  const items = await page.locator(".inventory_item").count();
-
+  await expect(page.locator(".inventory_item")).toHaveCount(5);
 });

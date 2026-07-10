@@ -1,5 +1,5 @@
 import { defineConfig } from "@playwright/test";
-import { env } from "./src/config/env";
+import { env } from "qa-intelligence/config/env";
 
 export default defineConfig({
   testDir: "./tests",
@@ -19,17 +19,17 @@ export default defineConfig({
     },
   ],
 
-  timeout: 30_000, // max time per test
+  timeout: 30_000,
   expect: {
-    timeout: 5_000, // max time per assertion
+    timeout: 5_000,
   },
 
   fullyParallel: true,
 
-  workers: Number(process.env.PW_WORKERS ?? 2),
-  retries: Number(process.env.PW_RETRIES ?? 1),
-  globalTeardown: require.resolve("./src/core/globalTeardown"),
-  globalSetup: require.resolve("./src/core/globalSetup"),
+  workers: env.PW_WORKERS,
+  retries: env.PW_RETRIES,
+  globalSetup: require.resolve("qa-intelligence/playwright/globalSetup"),
+  globalTeardown: require.resolve("qa-intelligence/playwright/globalTeardown"),
   use: {
     baseURL: env.BASE_URL,
     headless: env.HEADLESS,
