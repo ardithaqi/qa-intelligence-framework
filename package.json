@@ -22,7 +22,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "qa-intelligence": "^1.4.1"
+    "qa-intelligence": "^1.4.2"
   },
   "engines": {
     "node": ">=18"
