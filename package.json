@@ -5,9 +5,11 @@
   "main": "index.js",
   "scripts": {
     "test:examples": "playwright test tests/examples/saucedemo",
+    "test:flaky": "playwright test tests/examples/saucedemo/flaky.spec.ts --project=examples",
     "test:smoke": "playwright test tests/smoke",
     "test:regression": "playwright test tests/regression",
     "test:all": "playwright test",
+    "ci:diff:local": "npx qa-intelligence-diff --baseline baseline-artifacts --current artifacts --fail-on-blocking false",
     "report": "playwright show-report",
     "docker:build": "docker build -t qa-framework .",
     "docker:test": "docker run --rm qa-framework"
@@ -22,7 +24,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "qa-intelligence": "^1.4.2"
+    "qa-intelligence": "^1.4.3"
   },
   "engines": {
     "node": ">=18"
