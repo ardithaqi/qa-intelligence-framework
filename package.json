@@ -5,7 +5,6 @@
   "main": "index.js",
   "scripts": {
     "test:examples": "playwright test tests/examples/saucedemo",
-    "test:flaky": "playwright test tests/examples/saucedemo/flaky.spec.ts --project=examples",
     "test:smoke": "playwright test tests/smoke",
     "test:regression": "playwright test tests/regression",
     "test:all": "playwright test",
