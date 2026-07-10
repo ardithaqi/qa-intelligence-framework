@@ -1,7 +1,7 @@
 {
   "name": "qa-framework",
-  "version": "1.4.1",
-  "description": "",
+  "version": "1.5.0",
+  "description": "Playwright template with qa-intelligence CI engine via npm",
   "main": "index.js",
   "scripts": {
     "test:examples": "playwright test tests/examples/saucedemo",
@@ -9,9 +9,8 @@
     "test:regression": "playwright test tests/regression",
     "test:all": "playwright test",
     "report": "playwright show-report",
-    "docker:build": "docker build -t qa-framework",
-    "docker:test": "docker run --rm qa-framework",
-    "ai:analyze": "ts-node src/ai/runAnalyzer.ts"
+    "docker:build": "docker build -t qa-framework .",
+    "docker:test": "docker run --rm qa-framework"
   },
   "keywords": [],
   "author": "",
@@ -20,16 +19,10 @@
   "devDependencies": {
     "@playwright/test": "^1.58.2",
     "@types/node": "^22.19.13",
-    "ts-node": "^10.9.2",
-    "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@octokit/rest": "^22.0.1",
-    "dotenv": "^17.3.1",
-    "openai": "^6.25.0",
-    "qa-intelligence": "^1.4.1",
-    "zod": "^4.3.6"
+    "qa-intelligence": "^1.4.1"
   },
   "engines": {
     "node": ">=18"

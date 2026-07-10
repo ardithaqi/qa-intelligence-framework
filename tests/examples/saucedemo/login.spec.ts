@@ -1,7 +1,6 @@
-import { test } from "../../../src/core/baseTest";
-import { step } from "../../../src/core/steps";
+import { test, expect } from "qa-intelligence/playwright";
+import { step } from "qa-intelligence/playwright/steps";
 import LoginPage from "../../../src/examples/saucedemo/pages/loginPage";
-import { expect } from "../../../src/core/baseTest";
 
 test("user can login", async ({ page }) => {
   const login = new LoginPage(page);
@@ -17,5 +16,4 @@ test("user can login", async ({ page }) => {
   await step("Assert logged in", async () => {
     await login.assertLoggedIn();
   });
-
 });
