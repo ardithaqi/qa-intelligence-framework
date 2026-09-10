@@ -12,9 +12,21 @@ permissions:
   issues: write
   pull-requests: write
 
+concurrency:
+  group: qa-framework-ci-${{ github.workflow }}-${{ github.ref }}
+  # Only cancel superseded PR runs — never a push/merge run mid-flight, which
+  # could kill a test's cleanup (e.g. restoring a shared fixture) partway
+  # through and leave shared test data corrupted for later runs.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   AI-analysis-test:
     runs-on: ubuntu-latest
+    env:
+      # Only run the AI-analysis pipeline (diff/history/PR comment) when a key
+      # is actually configured, instead of posting an "everything is new"
+      # comment with no real analysis behind it.
+      AI_ANALYSIS_ENABLED: ${{ secrets.OPENAI_API_KEY != '' && 'true' || 'false' }}
 
     steps:
       - name: Checkout repository
@@ -25,7 +37,7 @@ jobs:
         run: rm -rf artifacts  
       
       - name: Download baseline artifacts from main (last successful)
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && env.AI_ANALYSIS_ENABLED == 'true'
         uses: dawidd6/action-download-artifact@v3
         with:
           workflow: ci.yml
@@ -35,18 +47,74 @@ jobs:
           workflow_conclusion: ""
           if_no_artifact_found: warn
 
+      # --- Merge-time reuse: avoid re-running the full suite on every merge ---
+      # On push (merge to main/master), the PR that just merged already ran
+      # this same suite. Reuse its results as this run's artifacts instead of
+      # paying for a second Docker build + full Playwright run. Falls back to
+      # a fresh run when no source PR or no completed run is found.
+
+      - name: Find source PR for this merge
+        id: source-pr
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: |
+          PR_HEAD_SHA=$(curl -s -H "Authorization: Bearer ${{ github.token }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+            | jq -r '.[0].head.sha // empty')
+
+          if [ -z "$PR_HEAD_SHA" ]; then
+            echo "No PR found for this merge commit — will run fresh instead."
+            exit 0
+          fi
+
+          RUN_ID=$(curl -s -H "Authorization: Bearer ${{ github.token }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/ci.yml/runs?head_sha=$PR_HEAD_SHA&event=pull_request&status=completed&per_page=1" \
+            | jq -r '.workflow_runs[0].id // empty')
+
+          if [ -z "$RUN_ID" ]; then
+            echo "PR found but it has no completed run — will run fresh instead."
+            exit 0
+          fi
+
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "Found source PR's run: $RUN_ID"
+
+      - name: Try to reuse the source PR's results
+        if: github.event_name == 'push' && steps.source-pr.outputs.run_id != ''
+        continue-on-error: true
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          run_id: ${{ steps.source-pr.outputs.run_id }}
+          name: ai-failure-artifacts
+          path: reused-artifacts
+          if_no_artifact_found: ignore
+
+      - name: Check what got reused
+        id: reused
+        if: always() && github.event_name == 'push'
+        run: |
+          if find reused-artifacts -type f -print -quit 2>/dev/null | grep -q .; then
+            echo "reused=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "reused=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build Docker image
+        if: github.event_name == 'pull_request' || steps.reused.outputs.reused != 'true'
         run: docker build --no-cache -t qa-framework .
 
       - name: Run tests inside Docker
         id: test
+        if: github.event_name == 'pull_request' || steps.reused.outputs.reused != 'true'
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
         run: |
           set +e
           docker run --name qa-run \
             -e OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
-            -e AI_ANALYSIS=true \
+            -e AI_ANALYSIS=${{ env.AI_ANALYSIS_ENABLED }} \
             -e BASE_URL=https://www.saucedemo.com \
             -e HEADLESS=true \
             -e PW_WORKERS=2 \
@@ -62,7 +130,14 @@ jobs:
           # On push (e.g. to master): fail if tests failed so the branch can be red
           if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then exit 0; fi
           exit $EXIT
-      
+
+      - name: Merge reused results into this run
+        if: always() && github.event_name == 'push' && steps.reused.outputs.reused == 'true'
+        run: |
+          mkdir -p artifacts
+          cp -r reused-artifacts/. artifacts/
+          echo "Reused the source PR's results instead of re-running Playwright."
+
       - name: Upload Playwright HTML report
         if: always()
         uses: actions/upload-artifact@v7
@@ -93,36 +168,41 @@ jobs:
           fi
 
       - name: Debug baseline contents
-        if: always() && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && env.AI_ANALYSIS_ENABLED == 'true'
         run: |
           echo "Baseline:"
           ls -la baseline-artifacts || true
           echo "Current:"
           ls -la artifacts || true
-          
+
       - name: Install node deps (for CI scripts)
-        if: always() && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && env.AI_ANALYSIS_ENABLED == 'true'
         run: npm ci
 
       - name: Compute failure diff
-        if: always() && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && env.AI_ANALYSIS_ENABLED == 'true'
         run: npx qa-intelligence-diff --baseline baseline-artifacts --current artifacts
 
       - name: Restore failure history cache
-        if: always() && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && env.AI_ANALYSIS_ENABLED == 'true'
         uses: actions/cache@v5
         with:
           path: .cache
-          key: failure-history-${{ github.repository }}-${{ github.sha }}
+          # A static/sha key never changes across re-runs of the same commit,
+          # and actions/cache skips saving once the restored key exactly
+          # matches — so history would populate once and then silently stop
+          # accumulating. A per-run key + prefix restore-keys keeps every
+          # run's save distinct while still restoring the latest match.
+          key: failure-history-${{ github.repository }}-${{ github.run_id }}
           restore-keys: |
             failure-history-${{ github.repository }}-
 
       - name: Update failure history (recurrence)
-        if: always() && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && env.AI_ANALYSIS_ENABLED == 'true'
         run: npx qa-intelligence-history
 
       - name: Comment PR with AI summary
-        if: always() && github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request' && env.AI_ANALYSIS_ENABLED == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
