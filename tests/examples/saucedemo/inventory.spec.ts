@@ -13,5 +13,5 @@ test("inventory page should show 6 products", async ({ page }) => {
   await expect(page).toHaveURL(/inventory/);
 
   const items = await page.locator(".inventory_item").count();
-
+  expect(items).toBe(6);
 });
