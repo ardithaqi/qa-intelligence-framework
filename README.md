@@ -35,13 +35,9 @@ This repository is designed to be used as:
 
 ```
 ├── src/
-│   ├── ai/              # failure analyzer (also in qa-intelligence package)
-│   ├── config/          # env.ts
-│   ├── core/            # testHooks, baseTest, globalSetup/Teardown
 │   ├── examples/        # demo page objects (SauceDemo)
 │   ├── pages/           # your page objects go here
-│   ├── reporting/
-│   └── utils/
+│   └── utils/           # optional helpers
 ├── tests/
 │   ├── examples/
 │   │   └── saucedemo/
@@ -49,9 +45,11 @@ This repository is designed to be used as:
 │   ├── smoke/
 │   └── your-tests-here/
 ├── Dockerfile
-├── playwright.config.ts
+├── playwright.config.ts # hooks + env from qa-intelligence npm package
 └── .github/workflows/ci.yml
 ```
+
+The **intelligence engine** (hooks, AI analysis, diff, history, PR comments) lives in the [`qa-intelligence`](https://www.npmjs.com/package/qa-intelligence) npm package — not as copied files in this repo.
 
 
 ## Writing Tests
@@ -59,8 +57,8 @@ This repository is designed to be used as:
 ### Basic Test Example
 
 ```ts
-import { test, expect } from "../../src/core/baseTest";
-import { step } from "../../src/core/steps";
+import { test, expect } from "qa-intelligence/playwright";
+import { step } from "qa-intelligence/playwright/steps";
 
 test("user can login", async ({ page }) => {
   await page.goto("/");
@@ -73,7 +71,7 @@ test("user can login", async ({ page }) => {
 Use:
 
 ```ts
-import { test, expect } from "../../src/core/baseTest";
+import { test, expect } from "qa-intelligence/playwright";
 ```
 
 Not directly from Playwright.
@@ -148,6 +146,43 @@ When a test fails:
 - `ai.txt` is produced
 - Artifacts are stored under: `artifacts/run-<timestamp>/`
 
+Set `AI_ANALYSIS=true` and an API key to enable analysis locally. CI sets `AI_ANALYSIS=true` in the workflow; locally you must enable it yourself.
+
+### AI providers
+
+Default provider is **OpenAI** (`gpt-4o-mini`). Configure via env:
+
+| Variable | Purpose |
+|----------|---------|
+| `AI_PROVIDER` | `openai` (default), `anthropic`, or `openai-compatible` |
+| `AI_MODEL` | Model name (provider-specific default if unset) |
+| `OPENAI_API_KEY` | API key for OpenAI (or fallback for `openai-compatible`) |
+| `ANTHROPIC_API_KEY` | API key for Anthropic |
+| `AI_API_KEY` | Generic key fallback for any provider |
+| `AI_BASE_URL` | Required for `openai-compatible` (Azure OpenAI, Ollama, LiteLLM, etc.) |
+
+Examples:
+
+```env
+# OpenAI (default)
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+AI_MODEL=gpt-4o-mini
+
+# Anthropic
+AI_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+AI_MODEL=claude-3-5-haiku-latest
+
+# OpenAI-compatible (Ollama, Azure, etc.)
+AI_PROVIDER=openai-compatible
+AI_BASE_URL=http://localhost:11434/v1
+AI_API_KEY=ollama
+AI_MODEL=llama3
+```
+
+Diff, flaky detection, and PR blocking work **without AI** — analysis is skipped when no API key is set.
+
 
 ## Flaky Detection
 
@@ -176,15 +211,18 @@ On Pull Requests:
    - **Flaky**
    - **Still Failing**
    - **Fixed Issues**
+   - **Flaky Watchlist**
 
 Only new real failures block the PR.
+
+**Flaky Watchlist** uses the history cache (last 20 PR runs, repo-wide). A test appears when it showed up in the failure report on at least 2 runs but not every run. Tests already listed as **New Issues** or **Still Failing** on this PR are omitted.
 
 
 ## Required GitHub Secrets
 
 Set in Repository Settings → Secrets:
 
-- `OPENAI_API_KEY`
+- `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY` / `AI_API_KEY` if using another provider — see [AI providers](#ai-providers))
 - `TEST_USERNAME`
 - `TEST_PASSWORD`
 
@@ -390,10 +428,15 @@ npx qa-intelligence-diff --baseline ../baseline-artifacts --current artifacts
 
 4. **Remove** the `Install CI intelligence engine` step — `qa-intelligence` is already in `playwright/package.json`.
 
-5. **Update** failure history cache path:
+5. **Update** failure history cache path and use a **repo-scoped key** (not `${{ github.sha }}`, or every commit starts with empty history):
 
 ```yaml
-path: playwright/.cache               # was .cache
+- uses: actions/cache@v4
+  with:
+    path: playwright/.cache           # was .cache
+    key: failure-history-${{ github.repository }}
+    restore-keys: |
+      failure-history-${{ github.repository }}-
 ```
 
 6. Place `Dockerfile` inside `playwright/` (see above). With `working-directory: playwright`, `docker build .` runs against that folder.
@@ -401,8 +444,6 @@ path: playwright/.cache               # was .cache
 Everything else in the workflow stays the same. The root `package.json` is not used by the E2E job.
 
 Full engine reference: **[qa-intelligence README](https://github.com/ardithaqi/qa-intelligence)**
-
-> **Note:** This template uses local `src/core/` for its example tests. The same logic lives in the `qa-intelligence` npm package — the adoption path above uses the package directly without copying `src/core/`.
 
 
 ## Author

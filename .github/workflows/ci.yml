@@ -5,6 +5,31 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      test_project:
+        description: Playwright test project to run
+        type: choice
+        options:
+          - smoke
+          - regression
+          - examples
+          - all
+        default: smoke
+        required: true
+      test_grep:
+        description: Optional Playwright grep/tag filter, for example @smoke or @critical
+        type: string
+        required: false
+      pr_number:
+        description: Optional GitHub pull request number used for changed-file analysis, history tracking, and PR comments
+        type: string
+        required: false
+      base_ref:
+        description: Base branch used for comparison when pr_number is provided
+        type: string
+        default: master
+        required: false
 
 permissions:
   contents: read
@@ -27,21 +52,49 @@ jobs:
       # is actually configured, instead of posting an "everything is new"
       # comment with no real analysis behind it.
       AI_ANALYSIS_ENABLED: ${{ secrets.OPENAI_API_KEY != '' && 'true' || 'false' }}
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
+      BASE_REF: ${{ github.event.pull_request.base.ref || inputs.base_ref }}
+      RUN_PR_INTELLIGENCE: ${{ github.event_name == 'pull_request' || inputs.pr_number != '' }}
+      TEST_PROJECT: ${{ github.event_name == 'workflow_dispatch' && inputs.test_project || 'all' }}
+      TEST_GREP: ${{ github.event_name == 'workflow_dispatch' && inputs.test_grep || '' }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-      
+
+      - name: Validate and resolve pull request context
+        if: github.event_name == 'workflow_dispatch' && inputs.pr_number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          PR_NUMBER="${{ inputs.pr_number }}"
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "::error::pr_number must be numeric (got: $PR_NUMBER)"
+            exit 1
+          fi
+          PR_JSON=$(gh pr view "$PR_NUMBER" --repo "${{ github.repository }}" --json number,baseRefName,headRefName,state,files)
+          PR_STATE=$(echo "$PR_JSON" | jq -r '.state')
+          if [ "$PR_STATE" = "MERGED" ] || [ "$PR_STATE" = "CLOSED" ]; then
+            echo "::warning::PR #$PR_NUMBER is $PR_STATE — continuing with supplied context"
+          fi
+          echo "Resolved PR #$PR_NUMBER"
+          echo "Head branch: $(echo "$PR_JSON" | jq -r '.headRefName')"
+          echo "PR base branch: $(echo "$PR_JSON" | jq -r '.baseRefName')"
+          echo "Comparison base_ref: ${{ inputs.base_ref }}"
+          echo "Changed files in PR:"
+          echo "$PR_JSON" | jq -r '.files[].path' | sed 's/^/  - /'
+
       - name: Clean artifacts
         if: always()
-        run: rm -rf artifacts  
-      
-      - name: Download baseline artifacts from main (last successful)
-        if: github.event_name == 'pull_request' && env.AI_ANALYSIS_ENABLED == 'true'
-        uses: dawidd6/action-download-artifact@v3
+        run: rm -rf artifacts
+
+      - name: Download baseline artifacts from base branch
+        if: env.RUN_PR_INTELLIGENCE == 'true' && env.AI_ANALYSIS_ENABLED == 'true'
+        uses: dawidd6/action-download-artifact@v21
         with:
           workflow: ci.yml
-          branch: ${{ github.base_ref }}
+          branch: ${{ env.BASE_REF }}
           name: ai-failure-artifacts
           path: baseline-artifacts
           workflow_conclusion: ""
@@ -110,8 +163,19 @@ jobs:
         if: github.event_name == 'pull_request' || steps.reused.outputs.reused != 'true'
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ env.PR_NUMBER }}
+          TEST_PROJECT: ${{ env.TEST_PROJECT }}
+          TEST_GREP: ${{ env.TEST_GREP }}
         run: |
           set +e
+          PLAYWRIGHT_ARGS=(test)
+          if [ -n "$TEST_PROJECT" ] && [ "$TEST_PROJECT" != "all" ]; then
+            PLAYWRIGHT_ARGS+=(--project "$TEST_PROJECT")
+          fi
+          if [ -n "$TEST_GREP" ]; then
+            PLAYWRIGHT_ARGS+=(--grep "$TEST_GREP")
+          fi
+          echo "Running: npx playwright ${PLAYWRIGHT_ARGS[*]}"
           docker run --name qa-run \
             -e OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
             -e AI_ANALYSIS=${{ env.AI_ANALYSIS_ENABLED }} \
@@ -121,14 +185,12 @@ jobs:
             -e PW_RETRIES=1 \
             -e TEST_USERNAME=${{ secrets.TEST_USERNAME }} \
             -e TEST_PASSWORD=${{ secrets.TEST_PASSWORD }} \
-            qa-framework
+            qa-framework npx playwright "${PLAYWRIGHT_ARGS[@]}"
           EXIT=$?
           docker cp qa-run:/app/playwright-report ./playwright-report 2>/dev/null || true
           docker cp qa-run:/app/artifacts ./artifacts 2>/dev/null || true
           docker rm qa-run 2>/dev/null || true
-          # On PR: do not fail here — computeDiff will fail the job only for new blocking failures
-          # On push (e.g. to master): fail if tests failed so the branch can be red
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then exit 0; fi
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] || [ -n "$PR_NUMBER" ]; then exit 0; fi
           exit $EXIT
 
       - name: Merge reused results into this run
@@ -145,8 +207,18 @@ jobs:
           name: playwright-report
           path: playwright-report/
 
-      - name: Upload AI failure artifacts
+      - name: Detect failure artifacts
+        id: failure_artifacts
         if: always()
+        run: |
+          if [ -d artifacts ] && [ -n "$(find artifacts -name 'ai.txt' -print -quit)" ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload AI failure artifacts
+        if: always() && steps.failure_artifacts.outputs.found == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: ai-failure-artifacts
@@ -168,7 +240,7 @@ jobs:
           fi
 
       - name: Debug baseline contents
-        if: always() && github.event_name == 'pull_request' && env.AI_ANALYSIS_ENABLED == 'true'
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true' && env.AI_ANALYSIS_ENABLED == 'true'
         run: |
           echo "Baseline:"
           ls -la baseline-artifacts || true
@@ -176,15 +248,15 @@ jobs:
           ls -la artifacts || true
 
       - name: Install node deps (for CI scripts)
-        if: always() && github.event_name == 'pull_request' && env.AI_ANALYSIS_ENABLED == 'true'
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true' && env.AI_ANALYSIS_ENABLED == 'true'
         run: npm ci
 
       - name: Compute failure diff
-        if: always() && github.event_name == 'pull_request' && env.AI_ANALYSIS_ENABLED == 'true'
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true' && env.AI_ANALYSIS_ENABLED == 'true'
         run: npx qa-intelligence-diff --baseline baseline-artifacts --current artifacts
 
       - name: Restore failure history cache
-        if: always() && github.event_name == 'pull_request' && env.AI_ANALYSIS_ENABLED == 'true'
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true' && env.AI_ANALYSIS_ENABLED == 'true'
         uses: actions/cache@v5
         with:
           path: .cache
@@ -198,16 +270,16 @@ jobs:
             failure-history-${{ github.repository }}-
 
       - name: Update failure history (recurrence)
-        if: always() && github.event_name == 'pull_request' && env.AI_ANALYSIS_ENABLED == 'true'
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true' && env.AI_ANALYSIS_ENABLED == 'true'
         run: npx qa-intelligence-history
 
       - name: Comment PR with AI summary
-        if: always() && github.event_name == 'pull_request' && env.AI_ANALYSIS_ENABLED == 'true'
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true' && env.AI_ANALYSIS_ENABLED == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           npx qa-intelligence-comment \
             --diff failure-diff.json \
             --repo ${{ github.repository }} \
-            --pr ${{ github.event.pull_request.number }} \
+            --pr ${{ env.PR_NUMBER }} \
             --token $GITHUB_TOKEN

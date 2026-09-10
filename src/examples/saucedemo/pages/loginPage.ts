@@ -1,5 +1,5 @@
-import { BasePage } from "../../../core/basePage";
-import { expect } from "@playwright/test";
+import { BasePage } from "qa-intelligence/playwright/basePage";
+import { expect } from "qa-intelligence/playwright";
 
 export default class LoginPage extends BasePage {
   private username = this.page.locator('[data-test="username"]');
