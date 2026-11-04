@@ -3,11 +3,11 @@
 Production-ready Playwright framework with:
 
 - Dockerized test execution
-- AI-powered failure analysis
-- PR failure diff intelligence
+- A release verdict on every PR: SAFE TO MERGE, REVIEW REQUIRED or BLOCK ([AI Release Guardian](https://github.com/ardithaqi/qa-intelligence))
+- AI-powered failure analysis (optional)
 - Flaky test detection
 - CI baseline comparison
-- Clean PR summary reporting
+- Ask your AI assistant "why is my PR blocked?" (MCP server for Claude Code and Cursor)
 
 This repository is designed to be used as:
 
@@ -24,11 +24,12 @@ This repository is designed to be used as:
 - Playwright (TypeScript)
 - Docker-first execution
 - GitHub Actions CI
-- AI failure root cause analysis
+- AI failure root cause analysis (optional)
 - Baseline diff vs target branch
-- PR comment intelligence
+- Release verdict, risk score and PR comment
 - Flaky detection (retry-aware)
-- CI blocking on new failures
+- Merge gate: CI fails on BLOCK and REVIEW REQUIRED
+- MCP server for AI assistants
 
 
 ## Project Structure
@@ -169,10 +170,9 @@ AI_PROVIDER=openai
 OPENAI_API_KEY=sk-...
 AI_MODEL=gpt-4o-mini
 
-# Anthropic
-AI_PROVIDER=anthropic
+# Anthropic (the provider follows whichever key is set; AI_PROVIDER only forces one)
 ANTHROPIC_API_KEY=sk-ant-...
-AI_MODEL=claude-3-5-haiku-latest
+AI_MODEL=claude-haiku-5-5
 
 # OpenAI-compatible (Ollama, Azure, etc.)
 AI_PROVIDER=openai-compatible
@@ -181,7 +181,7 @@ AI_API_KEY=ollama
 AI_MODEL=llama3
 ```
 
-Diff, flaky detection, and PR blocking work **without AI** — analysis is skipped when no API key is set.
+The verdict, diff, flaky detection and merge gate work **without AI**: failures are classified from Playwright's error output. With a key, AI adds a root cause and a suggested fix per problem, and names the change in the PR that likely broke the test.
 
 
 ## Flaky Detection
@@ -196,24 +196,22 @@ It is marked as:
 
 Flaky tests:
 
-- Do not block PR
-- Are displayed separately in PR summary
+- Do not block the PR
+- Show as SAFE TO MERGE with a yellow note in the PR comment
 
 
 ## CI Failure Intelligence
 
-On Pull Requests:
+On Pull Requests, the [AI Release Guardian](https://github.com/ardithaqi/qa-intelligence):
 
-1. Baseline artifacts are downloaded from target branch
-2. Current failures are compared
-3. PR comment shows:
-   - **New Issues**
-   - **Flaky**
-   - **Still Failing**
-   - **Fixed Issues**
-   - **Flaky Watchlist**
+1. Downloads the baseline (results from the target branch) and compares
+2. Classifies each new failure: regression, flaky, infrastructure, broken test or unclear
+3. Groups failures with the same cause and points to the changed file and commit that likely broke them
+4. Scores the risk and decides: **SAFE TO MERGE**, **REVIEW REQUIRED** or **BLOCK**
 
-Only new real failures block the PR.
+The PR comment shows the verdict and one line per problem (where, why, likely cause), with details on click. Failures already failing on the target branch and tests the PR fixed are listed separately and never block. A PR with nothing to report gets no comment; the verdict is still in the job summary and the check status.
+
+The job fails on BLOCK and REVIEW REQUIRED (`--fail-on review` in the workflow; use `block` to fail only on BLOCK, or `never` to report only).
 
 **Flaky Watchlist** uses the history cache (last 20 PR runs, repo-wide). A test appears when it showed up in the failure report on at least 2 runs but not every run. Tests already listed as **New Issues** or **Still Failing** on this PR are omitted.
 
@@ -222,24 +220,40 @@ Only new real failures block the PR.
 
 Set in Repository Settings → Secrets:
 
-- `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY` / `AI_API_KEY` if using another provider — see [AI providers](#ai-providers))
+- `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` (optional, for AI analysis; see [AI providers](#ai-providers))
 - `TEST_USERNAME`
 - `TEST_PASSWORD`
+
+Optional repository variables: `AI_PROVIDER`, `AI_MODEL`.
 
 
 ## How CI Works
 
 **On push to main/master:**
 
-- Tests run
-- Artifacts stored
+- Tests run (or the merged PR's results are reused)
+- Results stored as the baseline for the next PRs
 
 **On pull_request:**
 
-- Baseline downloaded
-- Diff computed
-- Comment posted
-- PR blocked if new failures exist
+- Baseline downloaded and compared
+- Release verdict, job summary and PR comment
+- Job fails on BLOCK and REVIEW REQUIRED
+
+
+## AI Assistants (MCP)
+
+`.mcp.json` (Claude Code) and `.cursor/mcp.json` (Cursor) register the `release-guardian` MCP server. When you open the repo, your editor asks once to enable it. Then ask your assistant things like "is my PR safe to merge?" or "why is the checkout test failing?".
+
+| Tool | What it does |
+|------|--------------|
+| `get_pr_verdict` | The CI verdict for your branch's PR |
+| `analyze_local` | A verdict for your local test run, before you push (uncommitted changes included) |
+| `explain_problem` | Cause, fix and error for one problem |
+| `flaky_tests` | The most unstable tests |
+| `failure_history` | How often a test failed and since when |
+
+All tools are read-only. `get_pr_verdict` needs GitHub access: `GITHUB_TOKEN`, or the GitHub CLI signed in (`gh auth login`). Run `npm install` first so the server is installed.
 
 
 ## Converting This Into Your Own Project
@@ -349,6 +363,12 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
+  reporter: [
+    ["list"],
+    ["html", { open: "never" }],
+    // Test totals for the release verdict
+    [require.resolve("qa-intelligence/playwright/reporter")],
+  ],
 });
 ```
 
@@ -363,7 +383,7 @@ test("homepage loads", async ({ page }) => {
 });
 ```
 
-Always import `test` from the package — **not** directly from Playwright. This enables AI analysis, artifact generation, flaky detection, and CI diff intelligence.
+Always import `test` from the package, **not** directly from Playwright. This records failures for the release verdict, and enables AI analysis and flaky detection.
 
 **`playwright/Dockerfile`**
 
@@ -428,20 +448,25 @@ npx qa-intelligence-diff --baseline ../baseline-artifacts --current artifacts
 
 4. **Remove** the `Install CI intelligence engine` step — `qa-intelligence` is already in `playwright/package.json`.
 
-5. **Update** failure history cache path and use a **repo-scoped key** (not `${{ github.sha }}`, or every commit starts with empty history):
+5. **Update** the failure history cache path (keep the per-run key from this repo's workflow):
 
 ```yaml
-- uses: actions/cache@v4
-  with:
-    path: playwright/.cache           # was .cache
-    key: failure-history-${{ github.repository }}
-    restore-keys: |
-      failure-history-${{ github.repository }}-
+path: playwright/.cache           # was .cache
 ```
 
-6. Place `Dockerfile` inside `playwright/` (see above). With `working-directory: playwright`, `docker build .` runs against that folder.
+6. **Update** the release report upload paths:
+
+```yaml
+path: |
+  playwright/release-report.json   # was release-report.json
+  playwright/release-guardian.md   # was release-guardian.md
+```
+
+7. Place `Dockerfile` inside `playwright/` (see above). With `working-directory: playwright`, `docker build .` runs against that folder.
 
 Everything else in the workflow stays the same. The root `package.json` is not used by the E2E job.
+
+Shortcut: `npx qa-intelligence init` scaffolds the `playwright/` folder, a ready workflow and the MCP configs in one step (without Docker).
 
 Full engine reference: **[qa-intelligence README](https://github.com/ardithaqi/qa-intelligence)**
 
