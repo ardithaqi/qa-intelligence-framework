@@ -48,10 +48,11 @@ jobs:
   AI-analysis-test:
     runs-on: ubuntu-latest
     env:
-      # Only run the AI-analysis pipeline (diff/history/PR comment) when a key
-      # is actually configured, instead of posting an "everything is new"
-      # comment with no real analysis behind it.
-      AI_ANALYSIS_ENABLED: ${{ secrets.OPENAI_API_KEY != '' && 'true' || 'false' }}
+      # AI analysis is optional (OPENAI_API_KEY or ANTHROPIC_API_KEY). The Release Guardian
+      # verdict, comment and merge gate work without it.
+      AI_ANALYSIS_ENABLED: ${{ (secrets.OPENAI_API_KEY != '' || secrets.ANTHROPIC_API_KEY != '') && 'true' || 'false' }}
+      # PR head commit, so file links in the guardian comment point at the PR's code.
+      RELEASE_GUARDIAN_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
       BASE_REF: ${{ github.event.pull_request.base.ref || inputs.base_ref }}
       RUN_PR_INTELLIGENCE: ${{ github.event_name == 'pull_request' || inputs.pr_number != '' }}
@@ -61,6 +62,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          # Full history so the guardian can see which files/commits the PR changed.
+          fetch-depth: 0
 
       - name: Validate and resolve pull request context
         if: github.event_name == 'workflow_dispatch' && inputs.pr_number != ''
@@ -90,7 +94,7 @@ jobs:
         run: rm -rf artifacts
 
       - name: Download baseline artifacts from base branch
-        if: env.RUN_PR_INTELLIGENCE == 'true' && env.AI_ANALYSIS_ENABLED == 'true'
+        if: env.RUN_PR_INTELLIGENCE == 'true'
         uses: dawidd6/action-download-artifact@v21
         with:
           workflow: ci.yml
@@ -178,6 +182,9 @@ jobs:
           echo "Running: npx playwright ${PLAYWRIGHT_ARGS[*]}"
           docker run --name qa-run \
             -e OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }} \
+            -e ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }} \
+            -e AI_PROVIDER=${{ vars.AI_PROVIDER }} \
+            -e AI_MODEL=${{ vars.AI_MODEL }} \
             -e AI_ANALYSIS=${{ env.AI_ANALYSIS_ENABLED }} \
             -e BASE_URL=https://www.saucedemo.com \
             -e HEADLESS=true \
@@ -211,7 +218,8 @@ jobs:
         id: failure_artifacts
         if: always()
         run: |
-          if [ -d artifacts ] && [ -n "$(find artifacts -name 'ai.txt' -print -quit)" ]; then
+          # Any results count (run-summary.json is always written): a green run is a baseline too.
+          if [ -d artifacts ] && [ -n "$(find artifacts -type f -print -quit)" ]; then
             echo "found=true" >> "$GITHUB_OUTPUT"
           else
             echo "found=false" >> "$GITHUB_OUTPUT"
@@ -223,6 +231,16 @@ jobs:
         with:
           name: ai-failure-artifacts
           path: artifacts/
+
+      # Same results under the name the release-guardian MCP server downloads, so a
+      # developer's local analysis (analyze_local) can compare against master.
+      - name: Upload baseline for local analysis (master)
+        if: always() && github.event_name == 'push' && steps.failure_artifacts.outputs.found == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-artifacts-baseline
+          path: artifacts/
+          retention-days: 30
 
       - name: Parse AI failure reports
         if: always()
@@ -240,7 +258,7 @@ jobs:
           fi
 
       - name: Debug baseline contents
-        if: always() && env.RUN_PR_INTELLIGENCE == 'true' && env.AI_ANALYSIS_ENABLED == 'true'
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true'
         run: |
           echo "Baseline:"
           ls -la baseline-artifacts || true
@@ -248,15 +266,16 @@ jobs:
           ls -la artifacts || true
 
       - name: Install node deps (for CI scripts)
-        if: always() && env.RUN_PR_INTELLIGENCE == 'true' && env.AI_ANALYSIS_ENABLED == 'true'
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true'
         run: npm ci
 
       - name: Compute failure diff
-        if: always() && env.RUN_PR_INTELLIGENCE == 'true' && env.AI_ANALYSIS_ENABLED == 'true'
-        run: npx qa-intelligence-diff --baseline baseline-artifacts --current artifacts
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true'
+        # The guardian step below owns the merge gate.
+        run: npx qa-intelligence-diff --baseline baseline-artifacts --current artifacts --fail-on-blocking false
 
       - name: Restore failure history cache
-        if: always() && env.RUN_PR_INTELLIGENCE == 'true' && env.AI_ANALYSIS_ENABLED == 'true'
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true'
         uses: actions/cache@v5
         with:
           path: .cache
@@ -270,16 +289,50 @@ jobs:
             failure-history-${{ github.repository }}-
 
       - name: Update failure history (recurrence)
-        if: always() && env.RUN_PR_INTELLIGENCE == 'true' && env.AI_ANALYSIS_ENABLED == 'true'
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true'
         run: npx qa-intelligence-history
 
-      - name: Comment PR with AI summary
-        if: always() && env.RUN_PR_INTELLIGENCE == 'true' && env.AI_ANALYSIS_ENABLED == 'true'
+      - name: Assess release risk
+        id: guardian
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true'
+        # --fail-on review: fail the job on BLOCK or REVIEW REQUIRED.
+        #           block:  fail only on BLOCK.   never: report only.
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AI_PROVIDER: ${{ vars.AI_PROVIDER }}
+          AI_MODEL: ${{ vars.AI_MODEL }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          npx ai-release-guardian analyze \
+            --current artifacts \
+            --base "${BASE_SHA:-origin/$BASE_REF}" \
+            --fail-on review
+
+      - name: Write job summary
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true'
+        run: if [ -f release-guardian.md ]; then cat release-guardian.md >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Comment PR with release assessment
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          npx qa-intelligence-comment \
-            --diff failure-diff.json \
-            --repo ${{ github.repository }} \
-            --pr ${{ env.PR_NUMBER }} \
-            --token $GITHUB_TOKEN
+          if [ -f release-report.json ]; then
+            npx ai-release-guardian comment \
+              --report release-report.json \
+              --repo "${{ github.repository }}" \
+              --pr "${{ env.PR_NUMBER }}"
+          fi
+
+      # Read by the release-guardian MCP server (get_pr_verdict).
+      - name: Upload release report
+        if: always() && env.RUN_PR_INTELLIGENCE == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-guardian-${{ github.run_id }}
+          path: |
+            release-report.json
+            release-guardian.md
+          retention-days: 14
+          if-no-files-found: ignore
