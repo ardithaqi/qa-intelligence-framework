@@ -41,5 +41,7 @@ export default defineConfig({
   reporter: [
     ["list"],
     ["html", { open: "never", outputFolder: "playwright-report" }],
+    // Test totals for the Release Guardian comment (artifacts/run-summary.json) and the AI cost line.
+    [require.resolve("qa-intelligence/playwright/reporter")],
   ],
 });
