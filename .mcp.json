@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "release-guardian": {
+      "command": "node",
+      "args": ["node_modules/qa-intelligence/dist/cli/guardian.js", "mcp"]
+    }
+  }
+}
